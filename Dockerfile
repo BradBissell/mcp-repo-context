@@ -28,14 +28,14 @@ RUN cd mcp-server && npm install && npm run build
 
 COPY extract-review-comments.py .
 COPY extract-codebase.py .
-COPY ingest-review-embeddings.py .
-COPY ingest-codebase.py .
 COPY query-review-knowledge.py .
 COPY query-codebase.py .
 
 RUN mkdir -p /app/data /repo
 
-ENV CHROMA_DB_PATH=/app/data/chroma_db
+ENV WEAVIATE_HOST=localhost
+ENV WEAVIATE_PORT=8080
+ENV WEAVIATE_GRPC_PORT=50051
 ENV REVIEW_QUERY_SCRIPT_PATH=/app/query-review-knowledge.py
 ENV CODEBASE_QUERY_SCRIPT_PATH=/app/query-codebase.py
 

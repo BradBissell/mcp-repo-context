@@ -1,152 +1,146 @@
 #!/usr/bin/env python3
-"""Query ChromaDB review knowledge base. Called by the MCP server."""
+"""Query Weaviate ReviewComments collection. Called by the MCP server."""
 
 import json
 import os
 import sys
 
-import chromadb
-from chromadb.utils.embedding_functions import DefaultEmbeddingFunction
+import weaviate
+import weaviate.classes.query as wq
 
-CHROMA_PATH = os.environ.get(
-    "CHROMA_DB_PATH",
-    os.path.join(os.path.dirname(__file__), "..", "data", "chroma_db")
-)
-COLLECTION_NAME = "review_comments"
+WEAVIATE_HOST = os.environ.get("WEAVIATE_HOST", "localhost")
+WEAVIATE_PORT = int(os.environ.get("WEAVIATE_PORT", "8080"))
+WEAVIATE_GRPC_PORT = int(os.environ.get("WEAVIATE_GRPC_PORT", "50051"))
+COLLECTION_NAME = "ReviewComments"
 
 
-def get_collection():
-    client = chromadb.PersistentClient(path=os.path.abspath(CHROMA_PATH))
-    ef = DefaultEmbeddingFunction()
-    return client.get_collection(name=COLLECTION_NAME, embedding_function=ef)
+def get_client():
+    return weaviate.connect_to_custom(
+        http_host=WEAVIATE_HOST,
+        http_port=WEAVIATE_PORT,
+        http_secure=False,
+        grpc_host=WEAVIATE_HOST,
+        grpc_port=WEAVIATE_GRPC_PORT,
+        grpc_secure=False,
+    )
+
+
+def obj_to_dict(obj):
+    props = {k: v for k, v in obj.properties.items() if k != "content"}
+    result = {
+        "id": props.get("doc_id", ""),
+        "document": obj.properties.get("content", ""),
+        "metadata": props,
+    }
+    if obj.metadata and obj.metadata.distance is not None:
+        result["distance"] = obj.metadata.distance
+    return result
 
 
 def search_similar(args):
-    collection = get_collection()
-    query = args["query"]
-    limit = args.get("limit", 5)
+    client = get_client()
+    try:
+        collection = client.collections.get(COLLECTION_NAME)
+        query = args["query"]
+        limit = args.get("limit", 5)
 
-    where = {}
-    if args.get("ticket"):
-        where["ticket"] = args["ticket"]
-    if args.get("file_path_pattern"):
-        where["file_path"] = {"$contains": args["file_path_pattern"]}
-    if args.get("comment_type"):
-        where["type"] = args["comment_type"]
-    if args.get("pr_number"):
-        where["pr_number"] = int(args["pr_number"])
+        filters = None
+        filter_parts = []
+        if args.get("ticket"):
+            filter_parts.append(wq.Filter.by_property("ticket").equal(args["ticket"]))
+        if args.get("file_path_pattern"):
+            filter_parts.append(wq.Filter.by_property("file_path").like(f"*{args['file_path_pattern']}*"))
+        if args.get("comment_type"):
+            filter_parts.append(wq.Filter.by_property("comment_type").equal(args["comment_type"]))
+        if args.get("pr_number"):
+            filter_parts.append(wq.Filter.by_property("pr_number").equal(int(args["pr_number"])))
 
-    # ChromaDB needs None or a dict with at least one key
-    where_filter = where if where else None
+        if filter_parts:
+            filters = filter_parts[0]
+            for f in filter_parts[1:]:
+                filters = filters & f
 
-    result = collection.query(
-        query_texts=[query],
-        n_results=limit,
-        where=where_filter,
-        include=["documents", "metadatas", "distances"]
-    )
-
-    results = []
-    for i in range(len(result["ids"][0])):
-        results.append({
-            "id": result["ids"][0][i],
-            "distance": result["distances"][0][i],
-            "document": result["documents"][0][i],
-            "metadata": result["metadatas"][0][i],
-        })
-    return results
+        results = collection.query.near_text(
+            query=query,
+            limit=limit,
+            filters=filters,
+            return_metadata=wq.MetadataQuery(distance=True),
+        )
+        return [obj_to_dict(obj) for obj in results.objects]
+    finally:
+        client.close()
 
 
 def get_patterns_for_file(args):
-    collection = get_collection()
-    file_path = args["file_path"]
-    limit = args.get("limit", 10)
-
-    # Extract file extension and directory for broader pattern matching
-    ext = os.path.splitext(file_path)[1]  # e.g. ".ts"
-    parts = file_path.split("/")
-
-    # Search by exact path first, then by extension pattern
-    results = []
-
-    # Try exact file path match
+    client = get_client()
     try:
-        exact = collection.get(
-            where={"file_path": file_path},
-            include=["documents", "metadatas"]
+        collection = client.collections.get(COLLECTION_NAME)
+        file_path = args["file_path"]
+        limit = args.get("limit", 10)
+
+        results = []
+        seen = set()
+
+        # Exact file match
+        exact = collection.query.fetch_objects(
+            filters=wq.Filter.by_property("file_path").equal(file_path),
+            limit=limit,
         )
-        for i in range(len(exact["ids"])):
-            results.append({
-                "id": exact["ids"][i],
-                "match_type": "exact_file",
-                "document": exact["documents"][i],
-                "metadata": exact["metadatas"][i],
-            })
-    except Exception:
-        pass
+        for obj in exact.objects:
+            d = obj_to_dict(obj)
+            d["match_type"] = "exact_file"
+            results.append(d)
+            seen.add(d["id"])
 
-    # Semantic search using the file path as query to find similar files
-    semantic = collection.query(
-        query_texts=[f"review feedback for {file_path}"],
-        n_results=limit,
-        include=["documents", "metadatas", "distances"]
-    )
-    seen_ids = {r["id"] for r in results}
-    for i in range(len(semantic["ids"][0])):
-        rid = semantic["ids"][0][i]
-        if rid not in seen_ids:
-            results.append({
-                "id": rid,
-                "match_type": "semantic",
-                "distance": semantic["distances"][0][i],
-                "document": semantic["documents"][0][i],
-                "metadata": semantic["metadatas"][0][i],
-            })
-
-    # Also search by file extension pattern if it's a common type
-    if ext in (".ts", ".vue", ".spec.ts"):
-        suffix = ext.lstrip(".")
-        pattern_results = collection.query(
-            query_texts=[f"code review patterns for {suffix} files"],
-            n_results=limit,
-            where={"file_path": {"$contains": ext}},
-            include=["documents", "metadatas", "distances"]
+        # Semantic search
+        semantic = collection.query.near_text(
+            query=f"review feedback for {file_path}",
+            limit=limit,
+            return_metadata=wq.MetadataQuery(distance=True),
         )
-        for i in range(len(pattern_results["ids"][0])):
-            rid = pattern_results["ids"][0][i]
-            if rid not in seen_ids:
-                seen_ids.add(rid)
-                results.append({
-                    "id": rid,
-                    "match_type": "extension_pattern",
-                    "distance": pattern_results["distances"][0][i],
-                    "document": pattern_results["documents"][0][i],
-                    "metadata": pattern_results["metadatas"][0][i],
-                })
+        for obj in semantic.objects:
+            d = obj_to_dict(obj)
+            if d["id"] not in seen:
+                d["match_type"] = "semantic"
+                results.append(d)
+                seen.add(d["id"])
 
-    return results[:limit]
+        # Extension pattern search
+        ext = os.path.splitext(file_path)[1]
+        if ext in (".ts", ".vue", ".spec.ts"):
+            pattern = collection.query.near_text(
+                query=f"code review patterns for {ext.lstrip('.')} files",
+                filters=wq.Filter.by_property("file_path").like(f"*{ext}"),
+                limit=limit,
+                return_metadata=wq.MetadataQuery(distance=True),
+            )
+            for obj in pattern.objects:
+                d = obj_to_dict(obj)
+                if d["id"] not in seen:
+                    d["match_type"] = "extension_pattern"
+                    results.append(d)
+                    seen.add(d["id"])
+
+        return results[:limit]
+    finally:
+        client.close()
 
 
 def get_ticket_history(args):
-    collection = get_collection()
-    ticket = args["ticket"].upper()
+    client = get_client()
+    try:
+        collection = client.collections.get(COLLECTION_NAME)
+        ticket = args["ticket"].upper()
 
-    result = collection.get(
-        where={"ticket": ticket},
-        include=["documents", "metadatas"]
-    )
-
-    results = []
-    for i in range(len(result["ids"])):
-        results.append({
-            "id": result["ids"][i],
-            "document": result["documents"][i],
-            "metadata": result["metadatas"][i],
-        })
-
-    # Sort by created_at
-    results.sort(key=lambda r: r["metadata"].get("created_at", ""))
-    return results
+        results_obj = collection.query.fetch_objects(
+            filters=wq.Filter.by_property("ticket").equal(ticket),
+            limit=200,
+        )
+        results = [obj_to_dict(obj) for obj in results_obj.objects]
+        results.sort(key=lambda r: r["metadata"].get("created_at") or "")
+        return results
+    finally:
+        client.close()
 
 
 COMMANDS = {

@@ -1,7 +1,7 @@
 {
   "name": "mcp-repo-context-server",
   "version": "1.0.0",
-  "description": "MCP server for querying PR review and codebase knowledge base (ChromaDB)",
+  "description": "MCP server for querying PR review and codebase knowledge base (Weaviate)",
   "type": "module",
   "main": "build/index.js",
   "scripts": {

@@ -106,7 +106,7 @@ def get_patterns_for_file(args):
                 seen.add(d["id"])
 
         # Extension pattern search
-        ext = os.path.splitext(file_path)[1]
+        ext = ".spec.ts" if file_path.endswith(".spec.ts") else os.path.splitext(file_path)[1]
         if ext in (".ts", ".vue", ".spec.ts"):
             pattern = collection.query.near_text(
                 query=f"code review patterns for {ext.lstrip('.')} files",

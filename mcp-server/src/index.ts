@@ -2,12 +2,14 @@
 
 /**
  * Review Knowledge MCP Server
- * Queries ChromaDB review comment and codebase knowledge base via Python bridge.
+ * Queries Weaviate review comment and codebase knowledge base via Python bridge.
  *
  * Environment variables:
  *   REVIEW_QUERY_SCRIPT_PATH  - path to query-review-knowledge.py
  *   CODEBASE_QUERY_SCRIPT_PATH - path to query-codebase.py
- *   CHROMA_DB_PATH            - path to ChromaDB storage directory
+ *   WEAVIATE_HOST             - Weaviate host (default: localhost)
+ *   WEAVIATE_PORT             - Weaviate HTTP port (default: 8080)
+ *   WEAVIATE_GRPC_PORT        - Weaviate gRPC port (default: 50052)
  */
 
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
@@ -41,6 +43,11 @@ async function queryScript(script: string, args: Record<string, unknown>): Promi
 
 const queryReviews = (args: Record<string, unknown>) => queryScript(REVIEW_QUERY_SCRIPT, args);
 const queryCodebase = (args: Record<string, unknown>) => queryScript(CODEBASE_QUERY_SCRIPT, args);
+
+function normalizeLimit(value: unknown, fallback: number, max: number): number {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 1) return fallback;
+  return Math.min(Math.trunc(value), max);
+}
 
 const server = new Server(
   { name: 'review-knowledge-server', version: '1.0.0' },
@@ -81,6 +88,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           },
           limit: {
             type: 'number',
+            minimum: 1,
             description: 'Max results to return (default: 5, max: 20)',
           },
         },
@@ -102,6 +110,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           },
           limit: {
             type: 'number',
+            minimum: 1,
             description: 'Max results to return (default: 10)',
           },
         },
@@ -166,6 +175,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           },
           limit: {
             type: 'number',
+            minimum: 1,
             description: 'Max results to return (default: 5, max: 20)',
           },
         },
@@ -216,42 +226,42 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args = {} } = request.params;
 
   try {
-    let chromaArgs: Record<string, unknown>;
+    let queryArgs: Record<string, unknown>;
     let result: unknown;
 
     switch (name) {
       case 'search_similar_reviews':
-        chromaArgs = {
+        queryArgs = {
           command: 'search',
           query: args.query,
           file_path_pattern: args.file_path_pattern,
           ticket: args.ticket,
           comment_type: args.comment_type,
           pr_number: args.pr_number,
-          limit: Math.min((args.limit as number) || 5, 20),
+          limit: normalizeLimit(args.limit, 5, 20),
         };
-        result = await queryReviews(chromaArgs);
+        result = await queryReviews(queryArgs);
         break;
 
       case 'get_review_patterns_for_file':
-        chromaArgs = {
+        queryArgs = {
           command: 'patterns',
           file_path: args.file_path,
-          limit: (args.limit as number) || 10,
+          limit: normalizeLimit(args.limit, 10, 50),
         };
-        result = await queryReviews(chromaArgs);
+        result = await queryReviews(queryArgs);
         break;
 
       case 'get_ticket_review_history':
-        chromaArgs = {
+        queryArgs = {
           command: 'history',
           ticket: args.ticket,
         };
-        result = await queryReviews(chromaArgs);
+        result = await queryReviews(queryArgs);
         break;
 
       case 'search_codebase':
-        chromaArgs = {
+        queryArgs = {
           command: 'search',
           query: args.query,
           module: args.module,
@@ -260,26 +270,26 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           chunk_type: args.chunk_type,
           language: args.language,
           file_path_pattern: args.file_path_pattern,
-          limit: Math.min((args.limit as number) || 5, 20),
+          limit: normalizeLimit(args.limit, 5, 20),
         };
-        result = await queryCodebase(chromaArgs);
+        result = await queryCodebase(queryArgs);
         break;
 
       case 'get_file_chunks':
-        chromaArgs = {
+        queryArgs = {
           command: 'file_chunks',
           file_path: args.file_path,
         };
-        result = await queryCodebase(chromaArgs);
+        result = await queryCodebase(queryArgs);
         break;
 
       case 'get_module_overview':
-        chromaArgs = {
+        queryArgs = {
           command: 'module_overview',
           module: args.module,
           application: args.application,
         };
-        result = await queryCodebase(chromaArgs);
+        result = await queryCodebase(queryArgs);
         break;
 
       default:

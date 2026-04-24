@@ -104,7 +104,11 @@ fi
 
 # --- Step 4: Install Python dependencies ---
 echo "==> Installing Python dependencies..."
-pip install -q weaviate-client
+# Try a plain install first. Fall back to --break-system-packages on PEP 668
+# distros (Debian 12+, Ubuntu 23.04+) where system Python is externally managed.
+if ! pip install -q weaviate-client 2>/dev/null; then
+    pip install -q --break-system-packages weaviate-client
+fi
 echo ""
 
 # --- Step 5: Build MCP server ---
@@ -118,7 +122,7 @@ echo ""
 # --- Step 6: Register with Claude Code ---
 echo "==> Registering MCP server with Claude Code..."
 claude mcp remove review-knowledge 2>/dev/null || true
-claude mcp add review-knowledge \
+claude mcp add review-knowledge -s user \
     -e WEAVIATE_HOST="$WEAVIATE_HOST" \
     -e WEAVIATE_PORT="$WEAVIATE_PORT" \
     -e WEAVIATE_GRPC_PORT="$WEAVIATE_GRPC_PORT" \

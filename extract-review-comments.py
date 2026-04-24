@@ -96,7 +96,7 @@ def extract_ticket(title, branch=""):
 
 
 def extract_pr_number_from_url(pull_request_url):
-    # e.g. https://api.github.com/repos/traderinteractive/aim-myt/pulls/731
+    # e.g. https://api.github.com/repos/owner/repo/pulls/731
     return int(pull_request_url.rstrip("/").split("/")[-1])
 
 

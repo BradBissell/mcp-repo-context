@@ -5,7 +5,7 @@
 # builds the MCP server, and registers it with Claude Code.
 #
 # Prerequisites:
-#   - Weaviate running at WEAVIATE_HOST:WEAVIATE_PORT (start via aim-myt/setup-knowledge-base.sh)
+#   - Weaviate running at WEAVIATE_HOST:WEAVIATE_PORT
 #   - Python 3 with pip
 #   - Node.js >= 18
 #   - Claude Code CLI (claude)
@@ -13,14 +13,14 @@
 #
 # Usage:
 #   # Register MCP server (Weaviate already running + ingested):
-#   cd /path/to/aim-myt
+#   cd /path/to/your-repo
 #   ../mcp-repo-context/setup.sh
 #
 #   # Ingest pre-built JSONL files then register:
 #   ../mcp-repo-context/setup.sh --data-dir ./data
 #
 #   # Extract fresh data from GitHub, ingest, then register:
-#   REVIEW_AUTHORS=BradBissell ../mcp-repo-context/setup.sh --extract
+#   REVIEW_AUTHORS=your-github-username ../mcp-repo-context/setup.sh --extract
 
 set -euo pipefail
 
@@ -56,8 +56,8 @@ if ! curl -sf "http://$WEAVIATE_HOST:$WEAVIATE_PORT/v1/.well-known/ready" > /dev
     echo ""
     echo "Error: Weaviate is not running at http://$WEAVIATE_HOST:$WEAVIATE_PORT"
     echo ""
-    echo "Start it first:"
-    echo "  cd $REPO_DIR && ./setup-knowledge-base.sh"
+    echo "Start a Weaviate instance first (e.g., via docker compose) with the"
+    echo "text2vec-transformers module enabled, then re-run this script."
     exit 1
 fi
 echo "Weaviate is ready."

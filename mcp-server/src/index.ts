@@ -59,7 +59,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     {
       name: 'search_similar_reviews',
       description:
-        'Semantic search across past PR review comments from BradBissell. ' +
+        'Semantic search across indexed PR review comments. ' +
         'Use to find similar feedback, patterns, or past decisions. ' +
         'Returns comments ranked by relevance with file paths, tickets, and diff context.',
       inputSchema: {
@@ -136,8 +136,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     {
       name: 'search_codebase',
       description:
-        'Semantic search across the aim-myt codebase (functions, classes, types, components). ' +
-        'Use to find code by natural language description (e.g., "authentication guard", "cart checkout logic", "listing composable").',
+        'Semantic search across the indexed codebase (functions, classes, types, components). ' +
+        'Use to find code by natural language description (e.g., "authentication guard", "checkout logic", "listing composable").',
       inputSchema: {
         type: 'object',
         properties: {

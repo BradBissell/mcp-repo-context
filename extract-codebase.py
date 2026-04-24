@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Extract and chunk source code into JSONL for ChromaDB ingestion.
+"""Extract and chunk source code into JSONL for Weaviate ingestion.
 
 Environment variables:
     REPO_ROOT              - Path to the repository root (default: parent of this script)

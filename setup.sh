@@ -120,15 +120,23 @@ cd "$SCRIPT_DIR"
 echo ""
 
 # --- Step 6: Register with Claude Code ---
+# Write to .mcp.json in the target repo (project scope). Claude Code auto-
+# discovers .mcp.json from cwd up the ancestor chain at session start. The
+# `-s user` scope writes to a location some Claude Code versions do not read,
+# so project scope is the reliable cross-version choice.
 echo "==> Registering MCP server with Claude Code..."
+cd "$REPO_DIR"
 claude mcp remove review-knowledge 2>/dev/null || true
-claude mcp add review-knowledge -s user \
+claude mcp add review-knowledge -s project \
     -e WEAVIATE_HOST="$WEAVIATE_HOST" \
     -e WEAVIATE_PORT="$WEAVIATE_PORT" \
     -e WEAVIATE_GRPC_PORT="$WEAVIATE_GRPC_PORT" \
     -e REVIEW_QUERY_SCRIPT_PATH="$SCRIPT_DIR/query-review-knowledge.py" \
     -e CODEBASE_QUERY_SCRIPT_PATH="$SCRIPT_DIR/query-codebase.py" \
     -- node "$SCRIPT_DIR/mcp-server/build/index.js"
+echo ""
+echo "Wrote MCP config to: $REPO_DIR/.mcp.json"
+echo "Add this file to .gitignore if you do not want it committed."
 echo ""
 
 echo "============================================"

@@ -130,14 +130,14 @@ def main():
 
     # Filter to admin users
     def is_human(login):
-    return not login.endswith("[bot]")
+        return not login.endswith("[bot]")
 
-def is_included(login):
-    if FILTER_AUTHORS:
-        return login in FILTER_AUTHORS
-    return is_human(login)
+    def is_included(login):
+        if FILTER_AUTHORS:
+            return login in FILTER_AUTHORS
+        return is_human(login)
 
-admin_comments = [c for c in all_comments if is_included(c["user"]["login"])]
+    admin_comments = [c for c in all_comments if is_included(c["user"]["login"])]
     print(f"  Admin comments: {len(admin_comments)}\n")
 
     # Step 3: Determine which PRs had admin comments, fetch PR-level reviews
